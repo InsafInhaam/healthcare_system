@@ -1,0 +1,42 @@
+# Node modules (if any)
+node_modules/
+
+# Composer dependencies
+vendor/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE-specific files
+.idea/
+.vscode/
+
+# Environment and configuration files
+.env
+.env.local
+.env.development
+.env.production
+.env.testing
+
+# Logs
+*.log
+logs/
+
+# Cache
+cache/
+*.cache
+*.tmp
+
+# Uploads or sensitive data
+uploads/
+storage/
+
+# S3-related temporary files
+*.s3-temp
+
+# XAMPP or local development files
+*.sql
+*.db
+*.pid
+htdocs/
