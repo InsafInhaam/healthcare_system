@@ -1,65 +1,55 @@
 <?php
-include_once '../../includes/Database.php';
-require 'vendor/autoload.php';  // AWS SDK for PHP
+error_reporting(E_ALL); 
+ini_set('display_errors', 1); 
 
-use Aws\S3\S3Client;
-use Aws\Exception\AwsException;
+require '../../config/s3.php';
+require '../../config/database.php';
 
-class ImageManager
-{
-    private $s3Client;
-    private $bucket;
-    private $db;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_FILES['image'], $_POST['patient_id'], $_POST['image_type'], $_POST['disease_type'], $_POST['diagnosis_report'])) {
+        $file = $_FILES['image'];
+        $fileName = basename($file['name']);
+        $fileTempPath = $file['tmp_name'];
 
-    public function __construct($db)
-    {
-        // Set up AWS S3 client
-        $this->s3Client = new S3Client([
-            'region' => 'us-west-1',  // Set your S3 bucket region
-            'version' => 'latest',
-            'credentials' => [
-                'key'    => 'your-access-key-id',
-                'secret' => 'your-secret-access-key',
-            ]
-        ]);
-        $this->bucket = 'your-s3-bucket-name';
-        $this->db = $db;
-    }
+        $patientId = $_POST['patient_id'];
+        $imageType = $_POST['image_type'];
+        $diseaseType = $_POST['disease_type'];
+        $diagnosisReport = $_POST['diagnosis_report'];
 
-    public function uploadImage($patient_id, $category, $file)
-    {
-        // Generate a unique filename
-        $file_name = uniqid() . '-' . basename($file['name']);
-        $file_tmp = $file['tmp_name'];
+        $s3Client = getS3Client();
+        $bucket = getBucketName();
 
-        // Upload to S3
         try {
-            $result = $this->s3Client->putObject([
-                'Bucket' => $this->bucket,
-                'Key'    => 'images/' . $file_name,
-                'SourceFile' => $file_tmp,
-                'ACL'    => 'public-read'  // Set the permissions
+            // Upload file to S3
+            $result = $s3Client->putObject([
+                'Bucket' => $bucket,
+                'Key'    => 'images/' . $fileName,
+                'SourceFile' => $fileTempPath,
             ]);
 
-            // Get the file URL from S3
-            $file_url = $result['ObjectURL'];
+            $url = $result['ObjectURL'];
 
-            // Save metadata to the database
-            $query = "INSERT INTO images (patient_id, category, file_name, file_url, upload_status) 
-                      VALUES (:patient_id, :category, :file_name, :file_url, 'Uploaded')";
-            $stmt = $this->db->prepare($query);
-            $stmt->bindParam(':patient_id', $patient_id);
-            $stmt->bindParam(':category', $category);
-            $stmt->bindParam(':file_name', $file_name);
-            $stmt->bindParam(':file_url', $file_url);
+            // Save file info in MySQL
+            $pdo = getDBConnection();
+            $stmt = $pdo->prepare("INSERT INTO images (patient_id, image_type, disease_type, image_url, diagnosis_report) VALUES (:patient_id, :image_type, :disease_type, :image_url, :diagnosis_report)");
+            $stmt->execute([
+                'patient_id' => $patientId,
+                'image_type' => $imageType,
+                'disease_type' => $diseaseType,
+                'image_url' => $url,
+                'diagnosis_report' => $diagnosisReport
+            ]);
 
-            if ($stmt->execute()) {
-                return json_encode(["message" => "Image uploaded successfully."]);
-            } else {
-                return json_encode(["message" => "Failed to save image metadata."]);
-            }
-        } catch (AwsException $e) {
-            return json_encode(["message" => "Error uploading image to S3: " . $e->getMessage()]);
+            echo json_encode(['message' => 'Image uploaded successfully', 'url' => $url]);
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
         }
+    } else {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid input']);
     }
+} else {
+    http_response_code(405);
+    echo json_encode(['error' => 'Invalid request method']);
 }
